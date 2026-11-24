@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { COPY_STYLE_ID } from '../src/services/dom/copyStyles'
 
 describe('main.tsx entrypoint', () => {
   beforeEach(() => {
@@ -19,39 +20,35 @@ describe('main.tsx entrypoint', () => {
     document.body.replaceChildren()
   })
 
-  it('starts the userscript runtime and renders the Solid status panel into a root div', async () => {
-    // Dynamic import is required here because this test verifies module-load side effects after jsdom setup.
+  it('installs copy styles and starts font capture without mounting a panel', async () => {
     await import('../src/main.tsx')
 
-    const root = document.body.querySelector<HTMLDivElement>('#fuck-yuketang-font-root')
-    expect(root).not.toBeNull()
-    expect(root?.textContent).toContain('雨课堂字形解密未开启')
-    expect(root?.textContent).toContain('等待用户开启解密')
-    expect(root?.textContent).toContain('累计解密：0')
-    expect(root?.textContent).toContain('开启解密')
-    expect(root?.textContent).toContain('复制明文')
+    expect(document.getElementById(COPY_STYLE_ID)).not.toBeNull()
+    expect(document.getElementById('fuck-yuketang-font-root')).toBeNull()
+    expect(vi.getTimerCount()).toBeGreaterThan(0)
   })
 
-  it('does not start the userscript runtime or render the status panel inside iframes', async () => {
+  it('does nothing inside an unrelated iframe', async () => {
     const parentWindow = {} as Window
-    const fetchMock = vi.mocked(fetch)
     vi.spyOn(window, 'top', 'get').mockReturnValue(parentWindow)
+    const fetchMock = vi.mocked(fetch)
 
     await import('../src/main.tsx')
     await vi.advanceTimersByTimeAsync(500)
 
-    expect(document.body.querySelector('#fuck-yuketang-font-root')).toBeNull()
+    expect(document.getElementById(COPY_STYLE_ID)).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('starts inside the exercise content iframe used by the lms-graph page', async () => {
+  it('starts inside the exercise content iframe', async () => {
     const parentWindow = {} as Window
     vi.spyOn(window, 'top', 'get').mockReturnValue(parentWindow)
     window.history.replaceState({}, '', '/v2/web/iframe-exercise/33439457/91166140?noLeftMenu=1&node_id=10509699')
 
     await import('../src/main.tsx')
 
-    expect(document.body.querySelector('#fuck-yuketang-font-root')).not.toBeNull()
+    expect(document.getElementById(COPY_STYLE_ID)).not.toBeNull()
+    expect(vi.getTimerCount()).toBeGreaterThan(0)
   })
 })

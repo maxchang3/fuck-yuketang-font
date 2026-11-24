@@ -1,10 +1,8 @@
 import { defineConfig } from 'vite'
 import monkey from 'vite-plugin-monkey'
-import solidPlugin from 'vite-plugin-solid'
 
 export default defineConfig({
   plugins: [
-    solidPlugin(),
     monkey({
       entry: 'src/main.tsx',
       userscript: {

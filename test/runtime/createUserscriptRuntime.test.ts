@@ -1,9 +1,8 @@
 import type { DecryptionMap, DecryptionMap as RuntimeMap } from '../../src/core/font'
 
 import type { UserscriptRuntime } from '../../src/runtime'
-import type { DecryptStatus } from '../../src/runtime/statusBus'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CONTROL_EVENT, createUserscriptRuntime, STATUS_EVENT } from '../../src/runtime'
+import { createUserscriptRuntime } from '../../src/runtime'
 
 const { decryptFontMock, decryptTextMock } = vi.hoisted(() => ({
   decryptFontMock: vi.fn<(buffer: ArrayBuffer) => Promise<RuntimeMap>>(),
@@ -40,9 +39,7 @@ afterEach(() => {
 })
 
 describe('userscript runtime', () => {
-  it('polls style tags and waits for the user to enable decryption before decrypting spans', async () => {
-    const statuses: DecryptStatus[] = []
-    window.addEventListener(STATUS_EVENT, event => statuses.push((event as CustomEvent<DecryptStatus>).detail))
+  it('polls style tags and decrypts encrypted spans automatically', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(new ArrayBuffer(8), { status: 200 }))))
 
     document.head.append(styleWithFont(FONT_URL))
@@ -55,17 +52,9 @@ describe('userscript runtime', () => {
 
     expect(fetch).toHaveBeenCalledWith(FONT_URL)
     expect(decryptFontMock).toHaveBeenCalledWith(expect.any(ArrayBuffer))
-    expect(decryptTextMock).not.toHaveBeenCalled()
-    expect(span.textContent).toBe('\uE001')
-
-    enableDecryption()
-    await flushPromises()
-
     expect(decryptTextMock).toHaveBeenCalledWith('\uE001', expect.any(Map))
     expect(span.textContent).toBe('解密文本')
     expect(span.classList.contains('xuetangx-com-encrypted-font')).toBe(false)
-    expect(statuses.map(status => status.message)).toContain('已解密 1 段文本')
-    expect(statuses.at(-1)?.decryptedTexts).toEqual(['解密文本'])
   })
 
   it('uses GM_xmlhttpRequest when available and scans nodes inserted by mutation observers', async () => {
@@ -75,7 +64,6 @@ describe('userscript runtime', () => {
     vi.stubGlobal('GM_xmlhttpRequest', requestMock)
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     document.body.append(styleWithFont(FONT_URL))
     const span = encryptedSpan()
     document.body.append(span)
@@ -98,7 +86,6 @@ describe('userscript runtime', () => {
     document.body.append(span)
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
     expect(span.classList.contains('xuetangx-com-encrypted-font')).toBe(true)
@@ -115,7 +102,6 @@ describe('userscript runtime', () => {
     document.head.append(styleWithFont(FONT_URL))
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
     expect(decryptFontMock).toHaveBeenCalledTimes(1)
@@ -135,7 +121,6 @@ describe('userscript runtime', () => {
     document.body.append(encryptedSpan())
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
     expect(decryptTextMock).not.toHaveBeenCalled()
@@ -177,8 +162,6 @@ describe('userscript runtime', () => {
 
   it('reports GM_xmlhttpRequest transport errors', async () => {
     const errorSpy = expectExpectedDecryptErrorLog()
-    const statuses: DecryptStatus[] = []
-    window.addEventListener(STATUS_EVENT, event => statuses.push((event as CustomEvent<DecryptStatus>).detail))
     vi.stubGlobal(
       'GM_xmlhttpRequest',
       vi.fn((details: { onerror: (error: unknown) => void }) => {
@@ -190,12 +173,10 @@ describe('userscript runtime', () => {
     document.body.append(encryptedSpan())
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
 
     expect(errorSpy).toHaveBeenCalledWith('雨课堂字形解密失败', expect.any(Error))
-    expect(statuses.map(status => status.message)).toContain('解密失败，等待页面或字体刷新后重试')
   })
 
   it('ignores stale decryptions after the active font changes', async () => {
@@ -209,7 +190,6 @@ describe('userscript runtime', () => {
     document.body.append(span)
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
 
@@ -228,8 +208,6 @@ describe('userscript runtime', () => {
 
   it('reports GM_xmlhttpRequest HTTP failures', async () => {
     const errorSpy = expectExpectedDecryptErrorLog()
-    const statuses: DecryptStatus[] = []
-    window.addEventListener(STATUS_EVENT, event => statuses.push((event as CustomEvent<DecryptStatus>).detail))
     vi.stubGlobal(
       'GM_xmlhttpRequest',
       vi.fn((details: { onload: (response: { response: ArrayBuffer, status: number }) => void }) => {
@@ -241,12 +219,10 @@ describe('userscript runtime', () => {
     document.body.append(encryptedSpan())
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
 
     expect(errorSpy).toHaveBeenCalledWith('雨课堂字形解密失败', expect.any(Error))
-    expect(statuses.map(status => status.message)).toContain('解密失败，等待页面或字体刷新后重试')
   })
 
   it('installs a Promise.withResolvers fallback when the runtime lacks one', async () => {
@@ -263,7 +239,6 @@ describe('userscript runtime', () => {
     document.body.append(encryptedSpan())
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
 
@@ -281,7 +256,6 @@ describe('userscript runtime', () => {
     document.body.append(span)
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
     runtime.scanAndDecrypt()
@@ -303,7 +277,6 @@ describe('userscript runtime', () => {
     document.body.append(span)
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
     runtime.dispose()
@@ -312,33 +285,6 @@ describe('userscript runtime', () => {
 
     expect(decryptTextMock).not.toHaveBeenCalled()
     expect(span.textContent).toBe('\uE001')
-  })
-
-  it('retries a pending encrypted node after decryption is paused and re-enabled', async () => {
-    const { promise, resolve } = Promise.withResolvers<DecryptionMap>()
-    decryptFontMock.mockReturnValueOnce(promise)
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(new ArrayBuffer(8), { status: 200 }))))
-
-    document.head.append(styleWithFont(FONT_URL))
-    const span = encryptedSpan()
-    document.body.append(span)
-
-    runtime = createUserscriptRuntime()
-    enableDecryption()
-    await vi.advanceTimersByTimeAsync(500)
-    await flushPromises()
-    disableDecryption()
-    resolve(new Map([[0xE001, 0x4F60]]))
-    await flushPromises()
-
-    expect(decryptTextMock).not.toHaveBeenCalled()
-    expect(span.textContent).toBe('\uE001')
-
-    enableDecryption()
-    await flushPromises()
-
-    expect(decryptTextMock).toHaveBeenCalledWith('\uE001', expect.any(Map))
-    expect(span.textContent).toBe('解密文本')
   })
 
   it('clears polling timers on dispose', async () => {
@@ -377,7 +323,6 @@ describe('userscript runtime', () => {
     document.body.append(span)
 
     runtime = createUserscriptRuntime()
-    enableDecryption()
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
 
@@ -400,14 +345,6 @@ function encryptedSpan(): HTMLSpanElement {
 
 function expectExpectedDecryptErrorLog() {
   return vi.spyOn(console, 'error').mockImplementation(() => undefined)
-}
-
-function enableDecryption(): void {
-  window.dispatchEvent(new CustomEvent(CONTROL_EVENT, { detail: { enabled: true } }))
-}
-
-function disableDecryption(): void {
-  window.dispatchEvent(new CustomEvent(CONTROL_EVENT, { detail: { enabled: false } }))
 }
 
 async function flushPromises(): Promise<void> {

@@ -7,9 +7,6 @@ export interface FontState {
 
 export interface RuntimeState {
   currentUrl: string
-  decryptedCount: number
-  decryptedTexts: string[]
-  decryptionEnabled: boolean
   decryptingNodes: WeakSet<Element>
   disposed: boolean
   fontState?: FontState

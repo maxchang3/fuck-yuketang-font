@@ -10,9 +10,9 @@ The script targets the student exercise pages at `*://www.yuketang.cn/v2/web/clo
 
 ## Features
 
-- Decrypts characters marked with `xuetangx-com-encrypted-font`.
+- Decrypts characters marked with `xuetangx-com-encrypted-font` automatically.
 - Watches dynamic page updates and SPA route changes.
-- Shows a Solid status panel for enabling, pausing, tracking, and copying decrypted text.
+- Injects a question-scoped stylesheet so the decoded question text and options can be selected and copied.
 - Purely frontend, no backend needed.
 
 ## Local build

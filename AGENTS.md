@@ -4,7 +4,7 @@ This file is for automated coding agents working in this repository. Read it bef
 
 ## Project Overview
 
-`fuck-yuketang-font` is a userscript for Yuketang student exercise pages. It captures encrypted question fonts injected by the page, parses glyph-to-Unicode mappings, and replaces encrypted-font text with the real plaintext. A Solid status panel in the bottom-right corner shows decryption progress and lets the user enable or pause decryption and copy decrypted text.
+`fuck-yuketang-font` is a userscript for Yuketang student exercise pages. It captures encrypted question fonts injected by the page, parses glyph-to-Unicode mappings, and replaces encrypted-font text with the real plaintext. It decrypts automatically and injects a small, question-scoped stylesheet so the decoded text can be selected and copied.
 
 The target page is configured in `vite.config.ts` through `vite-plugin-monkey`:
 
@@ -17,7 +17,6 @@ The target page is configured in `vite.config.ts` through `vite-plugin-monkey`:
 
 - Package manager: `pnpm@11.5.0`
 - Build: Vite + `vite-plugin-monkey`
-- UI: Solid
 - Font parsing: `opentype.js`
 - Hashing: `@noble/hashes`
 - Tests: Vitest + jsdom + V8 coverage
@@ -60,11 +59,9 @@ If any command reports a warning or error, fix the underlying issue and rerun th
 
 ```text
 src/
-  app/                 Solid app entry and mounting logic
-  components/          Reusable UI components, currently mainly StatusPanel
   constants/           Userscript constants, selectors, polling intervals, font URL regex
   core/font/           Font parsing, glyph command normalization, hashes, mappings, text decryption
-  runtime/             Userscript runtime, state, watchers, event bus, decryption orchestration
+  runtime/             Userscript runtime, state, watchers, decryption orchestration
   services/            DOM, HTTP, and platform compatibility helpers
   main.tsx             Userscript build entry
 test/                  Vitest tests mirroring src layers
@@ -76,23 +73,23 @@ dist/                  Vite/userscript build output
 ## Module Boundaries
 
 - `src/core/font/` must stay decoupled from the DOM and the userscript runtime. It should work with `ArrayBuffer`, glyph structures, hashes, `Map<number, number>`, and pure text replacement.
-- `src/runtime/` owns runtime orchestration: capturing fonts, caching the current font promise, scanning nodes, handling route changes, handling enable/pause controls, and emitting status events.
-- `src/services/dom/` contains browser-page capabilities such as DOM queries, font URL extraction, and encrypted-node marking.
-- `src/services/http/` contains font download transports. Prefer `GM_xmlhttpRequest` when available, with `fetch(..., { credentials: 'include' })` as the development/test fallback.
-- `src/app/` and `src/components/` handle UI rendering and user interactions only. The UI receives status through `STATUS_EVENT` and sends controls through `CONTROL_EVENT`; it should not call the decryption core directly.
+- `src/runtime/` owns runtime orchestration: capturing fonts, caching the current font promise, scanning nodes, and handling route changes.
+- `src/services/dom/` contains browser-page capabilities such as DOM queries, font URL extraction, encrypted-node marking, and copy-style injection.
+- `src/services/http/` contains font download transports. Prefer `GM_xmlhttpRequest` when available, with `fetch(url)` as the development/test fallback.
 
-When changing multiple layers, preserve the existing direction: UI -> events -> runtime -> services/core. Do not make `core/font` depend on runtime, DOM, Solid, or userscript APIs.
+When changing multiple layers, preserve the existing direction: runtime -> services/core. Do not make `core/font` depend on runtime, DOM, or userscript APIs.
 
 ## Runtime Behavior
 
-- Decryption is not enabled immediately by default. The status panel starts in the "waiting for the user to enable decryption" state.
+- Decryption starts automatically once the encrypted font is captured.
 - `createUserscriptRuntime()` installs the `Promise.withResolvers` fallback.
 - Font capture has two paths:
   - `createFontWatcher()` polls every 500 ms and searches style tags and `cssRules` for `exam_font_*.ttf`.
   - `MutationObserver` watches newly added `style` elements and extracts font URLs from them.
 - Encrypted text nodes are located through the `.xuetangx-com-encrypted-font` class.
 - After successful decryption, that class is removed to avoid repeat processing.
-- On SPA route changes, the runtime clears font state, the in-progress node set, counters, and decrypted text history, then starts font capture again.
+- `installCopyStyles()` injects one `<style>` element scoped to `.container-problem` so the decoded question text and options can be selected and copied.
+- On SPA route changes, the runtime clears font state, the in-progress node set, and the current font promise, then starts font capture again.
 - If a font promise becomes stale or the active font URL changes, old decryptions must not overwrite the new page state.
 - On decryption failure, the node is removed from the in-progress `WeakSet` so later page or font refreshes can retry it.
 
@@ -102,7 +99,6 @@ When changing multiple layers, preserve the existing direction: UI -> events -> 
 - Follow the Antfu ESLint style. Do not introduce `any`; `ts/no-explicit-any` is configured as an error.
 - Prefer small pure functions, especially in `core/font` and `services/*`.
 - Keep the existing import style: use `import type` for type-only imports.
-- UI styles use CSS modules. In TSX files, follow the existing `classes = styles as { ... }` pattern for class typing.
 - Do not leak test fixtures, browser mocks, or jsdom-only logic into production source files.
 - Put new shared userscript constants in `src/constants/userscript.ts` unless they serve only one module.
 
@@ -111,7 +107,6 @@ When changing multiple layers, preserve the existing direction: UI -> events -> 
 - Core pure-logic changes: add or update `test/core/font/*.test.ts`.
 - DOM queries, font URL extraction, and HTTP transport changes: add or update `test/services/**`.
 - Userscript orchestration, routes, `MutationObserver`, and async race changes: add or update `test/runtime/**`; these usually require `vi.useFakeTimers()` and `flushPromises()`.
-- UI status and button behavior changes: add or update `test/app/*.test.tsx` or component tests.
 - Full `pnpm test` runs can modify `badges/coverage.svg` and `coverage/`. If those outputs are not part of the task, mention that in the final response and do not casually revert user changes.
 
 ## Git And Workspace Safety
